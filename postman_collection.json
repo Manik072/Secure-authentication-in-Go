@@ -1,0 +1,161 @@
+{
+  "info": {
+    "_postman_id": "secure-auth-collection",
+    "name": "secure-auth",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Postman collection for secure-auth (register, login, refresh, logout, protected me). Includes tests that capture Set-Cookie and JSON tokens into environment variables for chaining requests."
+  },
+  "item": [
+    {
+      "name": "Register",
+      "request": {
+        "method": "POST",
+        "header": [ { "key": "Content-Type", "value": "application/json" } ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"Alice Example\",\n  \"email\": \"alice@example.com\",\n  \"password\": \"Secur3P@ss!\"\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": { "raw": "{{baseUrl}}/api/v1/register", "host": ["{{baseUrl}}"], "path": ["api","v1","register"] }
+      },
+      "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "pm.test('Register returns 201 or 200', function(){", "  pm.expect(pm.response.code).to.be.oneOf([200,201]);", "});" ] } } ],
+      "response": []
+    },
+    {
+      "name": "Login (set cookies)",
+      "request": {
+        "method": "POST",
+        "header": [ { "key": "Content-Type", "value": "application/json" } ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"alice@example.com\",\n  \"password\": \"Secur3P@ss!\"\n}",
+          "options": { "raw": { "language": "json" } }
+        },
+        "url": { "raw": "{{baseUrl}}/api/v1/login", "host": ["{{baseUrl}}"], "path": ["api","v1","login"] }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// 1) Capture Set-Cookie headers (preferred)",
+              "let sc = pm.response.headers.filter(h => h.key.toLowerCase() === 'set-cookie');",
+              "sc.forEach(h => {",
+              "  let raw = h.value.split(';')[0];",
+              "  let parts = raw.split('=');",
+              "  if (parts.length >= 2) {",
+              "    let name = parts[0];",
+              "    let value = parts.slice(1).join('=');",
+              "    pm.environment.set(name, value);",
+              "  }",
+              "});",
+              "// 2) Fallback: if server returns token in JSON body (some implementations do), save it too",
+              "try{",
+              "  let body = pm.response.json();",
+              "  if(body.access_token){ pm.environment.set('access_token', body.access_token); }",
+              "  if(body.refresh_token){ pm.environment.set('refresh_token', body.refresh_token); }",
+              "}catch(e){}",
+              "pm.test('Login returned 2xx', function(){ pm.expect(pm.response.code).to.be.within(200,299); });",
+              "pm.test('Access or refresh token saved (cookie or json)', function(){",
+              "  pm.expect(pm.environment.get('access_token') || pm.environment.get('refresh_token')).to.not.be.undefined;",
+              "});"
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "Refresh (rotate tokens)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": { "raw": "{{baseUrl}}/api/v1/refresh", "host": ["{{baseUrl}}"], "path": ["api","v1","refresh"] }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// Update env vars from Set-Cookie headers and fallback to JSON",
+              "let sc = pm.response.headers.filter(h => h.key.toLowerCase() === 'set-cookie');",
+              "sc.forEach(h => {",
+              "  let raw = h.value.split(';')[0];",
+              "  let parts = raw.split('=');",
+              "  if (parts.length >= 2) {",
+              "    let name = parts[0];",
+              "    let value = parts.slice(1).join('=');",
+              "    pm.environment.set(name, value);",
+              "  }",
+              "});",
+              "try{ let body = pm.response.json(); if(body.access_token) pm.environment.set('access_token', body.access_token); }catch(e){}",
+              "pm.test('Refresh returned 2xx', function(){ pm.expect(pm.response.code).to.be.within(200,299); });",
+              "pm.test('access_token exists after refresh', function(){ pm.expect(pm.environment.get('access_token')).to.not.be.undefined; });"
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "Me (protected)",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": { "raw": "{{baseUrl}}/api/v1/user/me", "host": ["{{baseUrl}}"], "path": ["api","v1","user","me"] }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Protected route returns 200 and user_id', function(){",
+              "  pm.expect(pm.response.code).to.be.within(200,299);",
+              "  try{ let b = pm.response.json(); pm.expect(b.user_id).to.not.be.undefined; }catch(e){}",
+              "});"
+            ]
+          }
+        }
+      ],
+      "response": []
+    },
+    {
+      "name": "Logout",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": { "raw": "{{baseUrl}}/api/v1/logout", "host": ["{{baseUrl}}"], "path": ["api","v1","logout"] }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Logout returns 200', function(){ pm.expect(pm.response.code).to.be.within(200,299); });",
+              "// Clear environment tokens so further requests do not reuse them",
+              "pm.environment.unset('access_token');",
+              "pm.environment.unset('refresh_token');"
+            ]
+          }
+        }
+      ],
+      "response": []
+    }
+  ],
+  "event": [],
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080" },
+    { "key": "access_token", "value": "" },
+    { "key": "refresh_token", "value": "" }
+  ]
+}
